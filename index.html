@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🛰️ Global LEO Constellation & Ground Station Monitor</title>
+    <!-- CesiumJS Kütüphaneleri -->
+    <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+    <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+    <style>
+        html, body, #cesiumContainer {
+            width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #000;
+        }
+        
+        /* Glassmorphism Komuta Paneli (Sol Üst) */
+        #infoPanel {
+            position: absolute; top: 20px; left: 20px; z-index: 1000;
+            background: rgba(10, 15, 30, 0.92); color: #fff;
+            padding: 18px 22px; border-radius: 14px;
+            backdrop-filter: blur(12px); 
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8), 0 0 15px rgba(56, 189, 248, 0.2);
+            min-width: 320px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        /* SAĞ ALT FİLO & GÖREV POP-UP KARTI */
+        #fleetInfoCard {
+            position: absolute; bottom: 25px; right: 25px; z-index: 1000;
+            background: rgba(10, 15, 30, 0.94); color: #fff;
+            padding: 20px 24px; border-radius: 16px;
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(0, 243, 255, 0.4);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.85), 0 0 25px rgba(0, 243, 255, 0.25);
+            width: 380px;
+            transition: all 0.3s ease;
+        }
+        #fleetInfoCard h3 {
+            margin: 0 0 12px 0; font-size: 16px; color: #00f3ff;
+            border-bottom: 1px solid rgba(56, 189, 248, 0.3);
+            padding-bottom: 8px; display: flex; align-items: center; justify-content: space-between;
+        }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+        .info-box {
+            background: rgba(30, 41, 59, 0.7); padding: 8px 10px; border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .info-box .label { font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block; }
+        .info-box .value { font-size: 12px; font-weight: bold; color: #38bdf8; margin-top: 2px; display: block; }
+
+        #fleetInfoCard p { margin: 8px 0 0 0; font-size: 12px; color: #cbd5e1; line-height: 1.5; }
+
+        h2 { 
+            margin: 10px 0 6px 0; font-size: 13px; color: #38bdf8; 
+            text-transform: uppercase; letter-spacing: 1.2px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        select, input, button {
+            width: 100%; padding: 9px 12px; border-radius: 8px;
+            background: rgba(30, 41, 59, 0.9); color: #38bdf8; 
+            border: 1px solid #334155;
+            margin-bottom: 8px; font-weight: 600; cursor: pointer;
+            outline: none; transition: all 0.3s ease; box-sizing: border-box;
+        }
+        select:hover, input:focus { border-color: #38bdf8; }
+        input { color: #fff; cursor: text; }
+        button { background: #0284c7; color: #fff; border: none; font-weight: bold; }
+        button:hover { background: #0369a1; }
+
+        p { margin: 5px 0; font-size: 13px; color: #94a3b8; }
+        .val { font-weight: 700; color: #f43f5e; font-family: monospace; }
+        .status { font-weight: 700; color: #22c55e; text-shadow: 0 0 8px rgba(34, 197, 94, 0.4); }
+
+        /* Lejant */
+        #legend {
+            margin-top: 12px; padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .legend-title { font-size: 11px; font-weight: bold; color: #38bdf8; margin-bottom: 8px; }
+        .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #cbd5e1; margin: 4px 0; }
+        .dot { border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+        /* Neon Hover Tooltip */
+        #tooltip {
+            position: absolute; display: none; z-index: 2000;
+            background: rgba(15, 23, 42, 0.95); color: #00f3ff;
+            padding: 10px 14px; border-radius: 8px; font-size: 12px; font-weight: 600;
+            border: 1px solid #00f3ff; pointer-events: none;
+            box-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
+            backdrop-filter: blur(8px); line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+<div id="cesiumContainer"></div>
+<div id="tooltip"></div>
+
+<!-- Sol Üst Panel -->
+<div id="infoPanel">
+    <h2>🌍 Dünya Harita Katmanı</h2>
+    <select id="mapSelect" onchange="switchMapLayer()">
+        <option value="satellite" selected>🛰️ Gerçek Görsel Uydu Haritası (Satellite)</option>
+        <option value="dark">🌑 Koyu Komuta Teması (ESRI Dark)</option>
+        <option value="cartodb">🌃 CartoDB Gece Haritası (Dark Matter)</option>
+    </select>
+
+    <h2>📍 Yer İstasyonu / Gözlemevi</h2>
+    <select id="stationSelect" onchange="switchStation()">
+        <option value="39.7788,41.2281,3170,DAG (Doğu Anadolu Gözlemevi)" selected>🔭 DAG (Erzurum - 3170m)</option>
+        <option value="36.8247,30.3340,2500,TÜBİTAK TUG (Antalya Bakırlıtepe)">🔭 TÜBİTAK TUG (Antalya - 2500m)</option>
+        <option value="41.0082,28.9784,30,İstanbul İstasyonu">📍 İstanbul İstasyonu (30m)</option>
+        <option value="40.7569,30.3783,30,Sakarya İstasyonu">📍 Sakarya İstasyonu (30m)</option>
+        <option value="41.0630,29.0620,130,Boğaziçi Kandilli Rasathanesi">🔭 Boğaziçi Kandilli (İstanbul - 130m)</option>
+        <option value="40.0983,26.4789,410,ÇOMÜ Ulupınar Gözlemevi">🔭 ÇOMÜ Ulupınar (Çanakkale - 410m)</option>
+        <option value="38.3975,27.2711,630,Ege Üni. Gözlemevi">🔭 Ege Üniversitesi (İzmir - 630m)</option>
+        <option value="39.8400,32.7800,1250,Ankara Üni. Ahlatlıbel Gözlemevi">🔭 Ankara Üni. Ahlatlıbel (1250m)</option>
+        <option value="gps">📡 Tarayıcı Konumumu Bul (GPS)...</option>
+        <option value="custom">🛠️ Manuel Enlem / Boylam Gir...</option>
+    </select>
+
+    <div id="customStationBox" style="display: none;">
+        <input type="number" id="customLat" placeholder="Enlem (Örn: 39.9035)" step="0.0001">
+        <input type="number" id="customLon" placeholder="Boylam (Örn: 32.6226)" step="0.0001">
+        <input type="number" id="customAlt" placeholder="Rakım / Yükseklik (Metre)" step="1" value="100">
+        <input type="text" id="customName" placeholder="İstasyon Adı (Opsiyonel)" value="Özel İstasyon">
+        <button onclick="applyCustomStation()">🎯 Konumu Uygula ve Odaklan</button>
+    </div>
+
+    <h2>🛰️ Uydu ve Takımyıldız</h2>
+    <select id="modeSelect" onchange="switchMode()">
+        <option value="single_25544" selected>📍 ISS (Uluslararası Uzay İstasyonu Detay)</option>
+        <option value="group_starlink">📡 Starlink Filosu (~6.000+ İnternet Uydusu)</option>
+        <option value="group_oneweb">🌐 OneWeb Filosu (~600+ Küresel İnternet)</option>
+        <option value="group_iridium-NEXT">🛰️ Iridium NEXT Filosu (~75+ İletişim)</option>
+        <option value="group_planet">📸 Planet Labs Filosu (~200+ Dünya Gözlem)</option>
+        <option value="group_stations">🌍 Uzay İstasyonları (ISS, Tiangong)</option>
+        <option value="group_active">🚀 TÜM AKTİF LEO UYDULARI (~10.000+ Nesne)</option>
+    </select>
+    
+    <div id="singleDetails" style="display: none;">
+        <p>Uydu: <span id="satName" class="val">-</span></p>
+        <p>Enlem: <span id="lat" class="val">-</span>°</p>
+        <p>Boylam: <span id="lon" class="val">-</span>°</p>
+        <p>Yükseklik: <span id="alt" class="val">-</span> km</p>
+    </div>
+    <p>Aktif Yörünge Nesnesi: <span id="activeCount" class="val">0</span></p>
+    <p>Sistem Durumu: <span id="status" class="status">Bağlanıyor...</span></p>
+
+    <div id="legend">
+        <div class="legend-title">⚖️ FİLO RENK & BOYUT SKALASI</div>
+        <div class="legend-item"><span class="dot" style="background:#ffd700; width:10px; height:10px; border:1px solid #fff;"></span> Uzay İstasyonu (>100 Ton)</div>
+        <div class="legend-item"><span class="dot" style="background:#00ff66; width:8px; height:8px;"></span> Iridium NEXT (~860 kg)</div>
+        <div class="legend-item"><span class="dot" style="background:#00f3ff; width:6px; height:6px;"></span> Starlink (~300-800 kg)</div>
+        <div class="legend-item"><span class="dot" style="background:#ff00ff; width:5px; height:5px;"></span> OneWeb (~150 kg)</div>
+        <div class="legend-item"><span class="dot" style="background:#ff9900; width:4px; height:4px;"></span> Küp / NanoSat (~5-15 kg)</div>
+        <div class="legend-item"><span class="dot" style="background:#38bdf8; width:5px; height:5px;"></span> Standart LEO (~500 kg)</div>
+    </div>
+</div>
+
+<!-- SAĞ ALT FİLO & GÖREV KARTI -->
+<div id="fleetInfoCard">
+    <h3 id="cardTitle">📍 Uluslararası Uzay İstasyonu</h3>
+    <div class="info-grid">
+        <div class="info-box"><span class="label">Operatör</span><span class="value" id="cardOp">NASA / Roscosmos</span></div>
+        <div class="info-box"><span class="label">Ort. Hız</span><span class="value" id="cardSpeed">~27.600 km/s</span></div>
+        <div class="info-box"><span class="label">Yörünge Yüksekliği</span><span class="value" id="cardAlt">~415 km</span></div>
+        <div class="info-box"><span class="label">İletişim / Bant</span><span class="value" id="cardBand">S / Ku / Ka Band</span></div>
+    </div>
+    <p><strong>🎯 Ana Görev / Amaç:</strong> <span id="cardPurpose">İnsanlı mikro-yerçekimi araştırmaları, uzay fizyolojisi ve teknoloji testleri.</span></p>
+    <p><strong>📑 Teknik Detaylar:</strong> <span id="cardDetails">1998 yılında yörüngeye fırlatılan, futbol sahası büyüklüğündeki ~450 tonluk insanlığın uzaydaki en büyük laboratuvarıdır. Dünya etrafında günde 16 tur atar.</span></p>
+</div>
+
+<script>
+    const FLEET_INFO_DB = {
+        "25544": {
+            title: "📍 Uluslararası Uzay İstasyonu (ISS)",
+            op: "NASA / Roscosmos / ESA",
+            speed: "~27.600 km/s",
+            alt: "~415 km",
+            band: "S / Ku / Ka-Band",
+            purpose: "Mikro-yerçekimi araştırmaları, uzay tıbbı ve yeni nesil uzay teknolojileri testi.",
+            details: "1998'den beri yörüngede kesintisiz görev yapan ~450 tonluk dev yapay uydudur. Günde 16 kez gündoğumu ve günbatımı yaşar."
+        },
+        "starlink": {
+            title: "📡 Starlink Filosu (SpaceX)",
+            op: "SpaceX (ABD)",
+            speed: "~27.000 km/s",
+            alt: "~550 km (LEO)",
+            band: "Ku / Ka / Optik Lazer",
+            purpose: "Düşük gecikmeli, küresel yüksek hızlı kablosuz geniş bant internet erişimi.",
+            details: "Dünya yörüngesindeki en kalabalık ticari takımyıldızdır. Lazer uydular arası bağ (optical cross-links) sayesinde karaya gerek duymadan veri aktarır."
+        },
+        "oneweb": {
+            title: "🌐 OneWeb Takımyıldızı",
+            op: "Eutelsat OneWeb (UK/FR)",
+            speed: "~26.200 km/s",
+            alt: "~1.200 km (LEO)",
+            band: "Ku / Ka-Band",
+            purpose: "Hükümetler, savunma sanayii, havacılık ve denizcilik için kurumsal geniş bant internet.",
+            details: "Kutup bölgeleri dahil tüm dünya karalarını kapsayan kutupsal yörünge mimarisine sahiptir. Kurumsal ve askeri haberleşme odaklıdır."
+        },
+        "iridium-NEXT": {
+            title: "🛰️ Iridium NEXT Filosu",
+            op: "Iridium Comms (ABD)",
+            speed: "~27.100 km/s",
+            alt: "~780 km (Kutupsal)",
+            band: "L-Band Cross-link",
+            purpose: "Küresel sesli uydu telefonu, M2M veri aktarımı ve uçak/gemi takibi (ADS-B).",
+            details: "Okyanuslar ve kutuplar dahil Dünya'nın %100'ünü kapsayan tek ticari şebekedir. Uydular kendi aralarında doğrudan haberleşir."
+        },
+        "planet": {
+            title: "📸 Planet Labs Filosu (Flock/Dove)",
+            op: "Planet Labs (ABD)",
+            speed: "~27.300 km/s",
+            alt: "~475 - 500 km (SSO)",
+            band: "Optik / RGB / NIR",
+            purpose: "Günlük yüksek çözünürlüklü optik Dünya gözlemi ve haritalama.",
+            details: "Yüzlerce minyatür KüpSat uydusu bir tarama ağı gibi çalışarak Dünya üzerindeki tüm karaları her gün 3-5 metre çözünürlükte fotoğraflar."
+        },
+        "active": {
+            title: "🚀 Tüm Aktif LEO Uyduları Kataloğu",
+            op: "Çok Uluslu / Küresel",
+            speed: "25.000 - 28.000 km/s",
+            alt: "160 - 2.000 km",
+            band: "Çoklu Frekanslar",
+            purpose: "Uzay Durumsal Farkındalık (SSA) ve yörünge trafik takibi.",
+            details: "NORAD kataloğuna kayıtlı çalışan ~10.000+ aktif LEO uydusunun canlı telemetri haritasıdır."
+        },
+        "stations": {
+            title: "🌍 Uzay İstasyonları (ISS & Tiangong)",
+            op: "Uluslararası / CNSA",
+            speed: "~27.600 km/s",
+            alt: "~400 - 420 km",
+            band: "C / S / Ku / Ka",
+            purpose: "İnsanlı uzay araştırmaları ve biyoloji/fizik laboratuvarı.",
+            details: "Uluslararası Uzay İstasyonu (ISS) ve Çin'in Tiangong İstasyonu insanlı uzay görevleri yürütür."
+        }
+    };
+
+    function updateFleetCard(modeKey) {
+        const info = FLEET_INFO_DB[modeKey] || FLEET_INFO_DB["active"];
+        document.getElementById('cardTitle').innerText = info.title;
+        document.getElementById('cardOp').innerText = info.op;
+        document.getElementById('cardSpeed').innerText = info.speed;
+        document.getElementById('cardAlt').innerText = info.alt;
+        document.getElementById('cardBand').innerText = info.band;
+        document.getElementById('cardPurpose').innerText = info.purpose;
+        document.getElementById('cardDetails').innerText = info.details;
+    }
+
+    // 1. CESIUMJS HARİTA KURULUMU
+    const viewer = new Cesium.Viewer('cesiumContainer', {
+        timeline: false, animation: false, baseLayerPicker: false,
+        geocoder: false, homeButton: false, sceneModePicker: false, navigationHelpButton: false,
+        skyAtmosphere: new Cesium.SkyAtmosphere(),
+        baseLayer: new Cesium.ImageryLayer(
+            new Cesium.UrlTemplateImageryProvider({
+                url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                maximumLevel: 18
+            })
+        )
+    });
+
+    viewer.scene.globe.enableLighting = true; 
+    viewer.scene.globe.showGroundAtmosphere = true; 
+    viewer.clock.shouldAnimate = true;
+
+    function switchMapLayer() {
+        const type = document.getElementById('mapSelect').value;
+        viewer.imageryLayers.removeAll();
+
+        let provider;
+        if (type === "satellite") {
+            provider = new Cesium.UrlTemplateImageryProvider({
+                url: 'https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+                maximumLevel: 18
+            });
+        } else if (type === "cartodb") {
+            provider = new Cesium.UrlTemplateImageryProvider({
+                url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                subdomains: ['a', 'b', 'c', 'd']
+            });
+        } else {
+            provider = new Cesium.UrlTemplateImageryProvider({
+                url: 'https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+                maximumLevel: 16
+            });
+        }
+        viewer.imageryLayers.addImageryProvider(provider);
+    }
+
+    // 🎯 YER İSTASYONU YÖNETİMİ (KİLİTLİ / CLAMP TO GROUND)
+    let stationEntity = null;
+
+    function setGroundStation(lat, lon, altMeters = 3170, name = "DAG (Doğu Anadolu Gözlemevi)", flyTo = true) {
+        if (stationEntity) {
+            viewer.entities.remove(stationEntity);
+        }
+        
+        stationEntity = viewer.entities.add({
+            name: name,
+            position: Cesium.Cartesian3.fromDegrees(lon, lat, 0),
+            point: { 
+                pixelSize: 12, 
+                color: Cesium.Color.RED, 
+                outlineColor: Cesium.Color.WHITE, 
+                outlineWidth: 2,
+                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY
+            },
+            label: { 
+                text: `📍 ${name}`, 
+                font: 'bold 13px sans-serif', 
+                fillColor: Cesium.Color.fromCssColorString('#00f3ff'),
+                showBackground: false,
+                pixelOffset: new Cesium.Cartesian2(0, -20), 
+                heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+                disableDepthTestDistance: Number.POSITIVE_INFINITY
+            },
+            customStationData: {
+                isStation: true,
+                name: name,
+                lat: parseFloat(lat).toFixed(4),
+                lon: parseFloat(lon).toFixed(4),
+                altMeters: altMeters
+            }
+        });
+
+        if (flyTo) {
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(lon, lat, 1500000),
+                duration: 2.0
+            });
+        }
+    }
+
+    function switchStation() {
+        const val = document.getElementById('stationSelect').value;
+        const customBox = document.getElementById('customStationBox');
+
+        if (val === "custom") {
+            customBox.style.display = 'block';
+        } else if (val === "gps") {
+            customBox.style.display = 'none';
+            if (navigator.geolocation) {
+                document.getElementById('status').innerText = "📡 GPS Konumu Alınıyor...";
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        document.getElementById('status').innerText = "🟢 GPS Bağlandı";
+                        const alt = pos.coords.altitude ? Math.round(pos.coords.altitude) : 50;
+                        setGroundStation(pos.coords.latitude, pos.coords.longitude, alt, "Benim Konumum (GPS)");
+                    },
+                    (err) => {
+                        alert("GPS Konumu alınamadı! Lütfen konum iznini kontrol edin.");
+                    }
+                );
+            } else {
+                alert("Tarayıcınız GPS konum servisini desteklemiyor!");
+            }
+        } else {
+            customBox.style.display = 'none';
+            const [lat, lon, alt, name] = val.split(",");
+            setGroundStation(parseFloat(lat), parseFloat(lon), parseFloat(alt), name);
+        }
+    }
+
+    function applyCustomStation() {
+        const lat = parseFloat(document.getElementById('customLat').value);
+        const lon = parseFloat(document.getElementById('customLon').value);
+        const alt = parseFloat(document.getElementById('customAlt').value) || 0;
+        const name = document.getElementById('customName').value || "Özel İstasyon";
+
+        if (isNaN(lat) || isNaN(lon)) {
+            alert("Lütfen geçerli bir Enlem (-90 / 90) ve Boylam (-180 / 180) değeri girin!");
+            return;
+        }
+        setGroundStation(lat, lon, alt, name);
+    }
+
+    // ULTRA HIZLI GPU POINT KOLEKSİYONU
+    let pointCollection = viewer.scene.primitives.add(new Cesium.PointPrimitiveCollection());
+    let activeSocket = null;
+    let singleEntity = null;
+    const tooltip = document.getElementById('tooltip');
+
+    let satStates = [];
+    let lastFrameTime = performance.now();
+
+    const COLOR_GOLD = Cesium.Color.fromCssColorString('#ffd700');
+    const COLOR_GREEN = Cesium.Color.fromCssColorString('#00ff66');
+    const COLOR_CYAN = Cesium.Color.fromCssColorString('#00f3ff');
+    const COLOR_MAGENTA = Cesium.Color.fromCssColorString('#ff00ff');
+    const COLOR_ORANGE = Cesium.Color.fromCssColorString('#ff9900');
+    const COLOR_BLUE = Cesium.Color.fromCssColorString('#38bdf8');
+    const COLOR_WHITE = Cesium.Color.WHITE;
+    const COLOR_BLACK = Cesium.Color.BLACK;
+
+    function getSatelliteStyle(name) {
+        const uName = (name || "").toUpperCase();
+
+        if (uName.includes("ISS") || uName.includes("ZARYA") || uName.includes("CSS") || uName.includes("TIANGONG") || uName.includes("STATION")) {
+            return { color: COLOR_GOLD, size: 12, outline: COLOR_WHITE, outlineWidth: 2, mass: "~450.000 kg" };
+        }
+        if (uName.includes("IRIDIUM")) {
+            return { color: COLOR_GREEN, size: 8, outline: COLOR_BLACK, outlineWidth: 1, mass: "~860 kg" };
+        }
+        if (uName.includes("STARLINK")) {
+            return { color: COLOR_CYAN, size: 6, outline: COLOR_BLACK, outlineWidth: 1, mass: "~300 - 800 kg" };
+        }
+        if (uName.includes("ONEWEB")) {
+            return { color: COLOR_MAGENTA, size: 5, outline: COLOR_BLACK, outlineWidth: 1, mass: "~150 kg" };
+        }
+        if (uName.includes("FLOCK") || uName.includes("LEMUR") || uName.includes("CUBESAT") || uName.includes("DOVE") || uName.includes("SPIRE")) {
+            return { color: COLOR_ORANGE, size: 4, outline: COLOR_BLACK, outlineWidth: 1, mass: "~5 - 15 kg" };
+        }
+        return { color: COLOR_BLUE, size: 5, outline: COLOR_BLACK, outlineWidth: 1, mass: "~500 kg" };
+    }
+
+    function clearAll() {
+        pointCollection.removeAll();
+        satStates = [];
+        if (singleEntity) {
+            viewer.entities.remove(singleEntity);
+            singleEntity = null;
+        }
+        viewer.trackedEntity = null;
+        tooltip.style.display = 'none';
+    }
+
+    function switchMode() {
+        if (activeSocket) activeSocket.close();
+        clearAll();
+
+        const selectedMode = document.getElementById('modeSelect').value;
+        document.getElementById('status').innerText = "🔄 TLE Kataloğu Yükleniyor...";
+
+        if (selectedMode.startsWith("single_")) {
+            const noradId = selectedMode.split("_")[1];
+            document.getElementById('singleDetails').style.display = 'block';
+            connectSingleSatellite(noradId);
+            updateFleetCard(noradId);
+        } else if (selectedMode.startsWith("group_")) {
+            const groupKey = selectedMode.replace("group_", "");
+            document.getElementById('singleDetails').style.display = 'none';
+            connectConstellation(groupKey);
+            updateFleetCard(groupKey);
+        }
+    }
+
+    // ⚡ 60 FPS INTERPOLATION LOOP
+    viewer.scene.preUpdate.addEventListener(() => {
+        if (!satStates.length) return;
+        const now = performance.now();
+        const progress = Math.min((now - lastFrameTime) / 1000.0, 1.0);
+
+        for (let i = 0; i < satStates.length; i++) {
+            const st = satStates[i];
+            if (!st || !st.targetPos) continue;
+
+            const pt = pointCollection.get(i);
+            if (!pt) continue;
+
+            Cesium.Cartesian3.lerp(st.startPos, st.targetPos, progress, st.currentPos);
+            pt.position = st.currentPos;
+        }
+    });
+
+    // TEKLİ UYDU DETAY TAKİBİ
+    function connectSingleSatellite(noradId) {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        activeSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/orbit/${noradId}`);
+        activeSocket.onopen = () => {
+            document.getElementById('status').innerText = "🟢 Tekli Takip Aktif";
+            document.getElementById('activeCount').innerText = "1";
+        };
+        activeSocket.onmessage = (event) => {
+            const telemetry = JSON.parse(event.data);
+            const now = Cesium.JulianDate.now();
+            const pos = Cesium.Cartesian3.fromDegrees(telemetry.longitude, telemetry.latitude, telemetry.altitude_km * 1000);
+
+            if (!singleEntity) {
+                singleEntity = viewer.entities.add({
+                    point: { pixelSize: 14, color: Cesium.Color.YELLOW, outlineColor: Cesium.Color.BLACK, outlineWidth: 2 },
+                    label: { text: `🛰️ ${telemetry.satellite_name}`, font: '13px sans-serif', pixelOffset: new Cesium.Cartesian2(0, -25) }
+                });
+                viewer.trackedEntity = singleEntity;
+            }
+            singleEntity.position = pos;
+            viewer.clock.currentTime = now;
+
+            document.getElementById('satName').innerText = telemetry.satellite_name;
+            document.getElementById('lat').innerText = telemetry.latitude;
+            document.getElementById('lon').innerText = telemetry.longitude;
+            document.getElementById('alt').innerText = telemetry.altitude_km;
+        };
+    }
+
+    // FİLO STREAMING
+    function connectConstellation(groupName) {
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        activeSocket = new WebSocket(`${wsProtocol}//${window.location.host}/ws/constellation/${groupName}`);
+
+        activeSocket.onopen = () => {
+            document.getElementById('status').innerText = `🟢 ${groupName.toUpperCase()} Akışı Aktif`;
+        };
+
+        activeSocket.onmessage = (event) => {
+            const satArray = JSON.parse(event.data);
+            document.getElementById('activeCount').innerText = satArray.length;
+            
+            lastFrameTime = performance.now();
+
+            while (pointCollection.length < satArray.length) {
+                pointCollection.add({
+                    pixelSize: 5,
+                    color: COLOR_BLUE,
+                    show: true
+                });
+            }
+
+            for (let i = satArray.length; i < pointCollection.length; i++) {
+                pointCollection.get(i).show = false;
+            }
+
+            for (let i = 0; i < satArray.length; i++) {
+                const [lon, lat, altKm, name] = satArray[i];
+                const targetCartesian = Cesium.Cartesian3.fromDegrees(lon, lat, altKm * 1000);
+                const pt = pointCollection.get(i);
+                
+                pt.show = true;
+                const style = getSatelliteStyle(name);
+                pt.pixelSize = style.size;
+                pt.color = style.color;
+                pt.outlineColor = style.outline;
+                pt.outlineWidth = style.outlineWidth;
+
+                if (!satStates[i]) {
+                    satStates[i] = {
+                        startPos: targetCartesian.clone(),
+                        currentPos: targetCartesian.clone(),
+                        targetPos: targetCartesian.clone()
+                    };
+                } else {
+                    satStates[i].startPos = satStates[i].currentPos.clone();
+                    satStates[i].targetPos = targetCartesian;
+                }
+
+                pt.id = { 
+                    name: name || `SATELLITE #${i+1}`, 
+                    alt: altKm,
+                    massKg: style.mass
+                };
+            }
+        };
+    }
+
+    // HOVER TOOLTIP
+    const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    handler.setInputAction((movement) => {
+        const pickedObject = viewer.scene.pick(movement.endPosition);
+        
+        if (Cesium.defined(pickedObject) && pickedObject.primitive && pickedObject.id) {
+            const data = pickedObject.id;
+            
+            if (data.customStationData && data.customStationData.isStation) {
+                const st = data.customStationData;
+                const kmAlt = (st.altMeters / 1000).toFixed(2);
+                tooltip.style.display = 'block';
+                tooltip.style.left = (movement.endPosition.x + 15) + 'px';
+                tooltip.style.top = (movement.endPosition.y + 15) + 'px';
+                tooltip.innerHTML = `
+                    📍 <strong>${st.name}</strong><br>
+                    🌐 Enlem: <span style="color:#38bdf8">${st.lat}°</span><br>
+                    🗺️ Boylam: <span style="color:#38bdf8">${st.lon}°</span><br>
+                    ⛰️ Rakım: <span style="color:#22c55e">${st.altMeters} m (${kmAlt} km)</span>
+                `;
+            } else if (data.massKg !== undefined) {
+                tooltip.style.display = 'block';
+                tooltip.style.left = (movement.endPosition.x + 15) + 'px';
+                tooltip.style.top = (movement.endPosition.y + 15) + 'px';
+                tooltip.innerHTML = `
+                    🛰️ <strong>${data.name}</strong><br>
+                    ⚖️ Ağırlık: <span style="color:#22c55e">${data.massKg}</span><br>
+                    📏 Yükseklik: ${data.alt} km
+                `;
+            } else {
+                tooltip.style.display = 'none';
+            }
+        } else {
+            tooltip.style.display = 'none';
+        }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    // BAŞLANGIÇ
+    setGroundStation(39.7788, 41.2281, 3170, "DAG (Doğu Anadolu Gözlemevi)", false);
+    switchMode();
+</script>
+
+</body>
+</html>

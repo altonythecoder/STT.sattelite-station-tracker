@@ -1,0 +1,18 @@
+# Python Önbellek Dosyaları
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Sanal Ortam Klasörleri (Resmindekilerin Hepsini Kapsar)
+.venv/
+venv/
+ENV/
+
+# Gizli Çevre Değişkenleri
+.env
+
+# IDE ve İşletim Sistemi Dosyaları
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
