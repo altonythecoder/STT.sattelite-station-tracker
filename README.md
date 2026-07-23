@@ -26,15 +26,3 @@ Frontend: CesiumJS 3D WebGL Globe, HTML5/CSS3 Glassmorphism UI
 DevOps: Docker, Docker Compose
 ```
 
-## 🛠️ 4. Adım: Git İle GitHub'a Yükleme (Terminal Komutları)
-
-VS Code'un altındaki **PowerShell** terminalinde (`(venv) PS C:\Users\...` yazan yer) sırasıyla şu komutları çalıştır:
-
-### 1. Yerel Depoyu Başlat ve Dosyaları Ekle:
-```bash
-git init
-git add .
-git commit -m "feat: initial commit of satellite tracker GCS application"
-git branch -M main
-```
-
