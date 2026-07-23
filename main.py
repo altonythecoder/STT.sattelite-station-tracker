@@ -28,7 +28,7 @@ async def websocket_single_orbit(websocket: WebSocket, norad_id: int):
         while True:
             telemetry = tracker.get_current_telemetry()
             await websocket.send_json(telemetry)
-            await asyncio.sleep(3.0)
+            await asyncio.sleep(0.8)
     except WebSocketDisconnect:
         pass
     except Exception as e:
