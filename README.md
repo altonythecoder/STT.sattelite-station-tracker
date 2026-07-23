@@ -1,7 +1,3 @@
-Harika bir Bitirme Projesi (Graduation Project) reposu için, tüm dosyalarındaki mimariyi, özellikleri ve kurulum adımlarını kapsayan **çok detaylı ve profesyonel** bir İngilizce README hazırladım.
-
-Bu README, projenin arkasındaki mühendisliği, veri akışını ve teknik yetkinliklerini tam anlamıyla yansıtıyor. GitHub profilinde harika duracaktır!
-
 # 🛰️ locaSAT: Global LEO Satellite Tracker & Ground Control Station[cite: 7]
 
 ![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)
@@ -149,7 +145,4 @@ This project is licensed under the MIT License - Copyright (c) 2026 Altay. See t
 
 *Built with 💻 and ☕ for Space Domain Awareness.*
 
-```
 
-```
-```
